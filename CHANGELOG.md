@@ -30,6 +30,7 @@ NEW FEATURES:
     While `-target` specifies the objects to _include_ and skips everything not needed for the selected objects, `-exclude` instead specifies objects to skip. OpenTofu will exclude the selected objects and everything that depends on them.
 
 ENHANCEMENTS:
+* OpenTofu builds now use Go version 1.22 ([#2050](https://github.com/opentofu/opentofu/issues/2050))
 * `provider` blocks now support `for_each`. ([#2123](https://github.com/opentofu/opentofu/issues/2123))
 * The new `-exclude` planning option complements `-target`, specifying what to exclude rather than what to include. ([#1900](https://github.com/opentofu/opentofu/pull/1900))
 * State encryption key providers now support customizing the metadata key via `encrypted_metadata_alias`. ([#2080](https://github.com/opentofu/opentofu/pull/2080))
@@ -39,6 +40,12 @@ ENHANCEMENTS:
 * `tofu console` now accepts expressions split over multiple lines, when the newline characters appear inside bracketing pairs or when they are escaped using a backslash. ([#1875](https://github.com/opentofu/opentofu/pull/1875))
 * Improved performance for large graphs when debug logs are not enabled. ([#1810](https://github.com/opentofu/opentofu/pull/1810))
 * Improved performance for large graphs with many submodules. ([#1809](https://github.com/opentofu/opentofu/pull/1809))
+* Extended trace logging for HTTP backend, including request and response bodies. ([#2120](https://github.com/opentofu/opentofu/pull/2120))
+* `tofu test` now throws errors instead of warnings for invalid override and mock fields. ([#2220](https://github.com/opentofu/opentofu/pull/2220))
+* `tofu test` now supports `override_resource` and `override_data` blocks in the scope of a single `mock_provider`. ([#2168](https://github.com/opentofu/opentofu/pull/2168))
+* Changes to encryption configuration now auto-apply the migration ([#2232](https://github.com/opentofu/opentofu/pull/2232))
+* References to vars, data, etc. are now usable in variable validation ([#2216](https://github.com/opentofu/opentofu/pull/2216))
+* `AzureRM` backend now support `timeout_seconds` with default timeout of 300 seconds ([#2263](https://github.com/opentofu/opentofu/pull/2263))
 
 BUG FIXES:
 * `templatefile` no longer crashes if the given filename is derived from a sensitive value. ([#1801](https://github.com/opentofu/opentofu/issues/1801))
@@ -56,6 +63,12 @@ BUG FIXES:
 * Error message about a provider type mismatch now correctly identifies which module contains the problem. ([#1991](https://github.com/opentofu/opentofu/pull/1991))
 * The `yamldecode` function's interpretation of scalars as numbers now conforms to the YAML 1.2 specification. In particular, the scalar value `+` is now interpreted as the string `"+"` rather than returning a parse error trying to interpret it as an integer. ([#2044](https://github.com/opentofu/opentofu/pull/2044))
 * A `module` block's `version` argument now accepts prerelease version selections using a "v" prefix before the version number. Previously this was accepted only for non-prerelease selections. ([#2124])(https://github.com/opentofu/opentofu/issues/2124)
+* The `tofu test` command doesn't try to validate mock provider definition by its underlying provider schema now. ([#2140](https://github.com/opentofu/opentofu/pull/2140))
+* Type validation for mocks and overrides are now less strict in `tofu test`. ([#2144](https://github.com/opentofu/opentofu/pull/2144))
+* Skip imports blocks logic on `tofu destroy` ([#2214](https://github.com/opentofu/opentofu/pull/2214))
+* Updated github.com/golang-jwt/jwt/v4 from 4.4.2 to 4.5.1 to make security scanners happy (no vulnerability, see [#2179](https://github.com/opentofu/opentofu/pull/2179))
+* `tofu test` is now setting `null`s for dynamic type when generating mock values. ([#2245](https://github.com/opentofu/opentofu/pull/2245))
+* Variables declared in test files are now taking into account type default values. ([#2244](https://github.com/opentofu/opentofu/pull/2244))
 
 INTERNAL CHANGES:
 
