@@ -153,6 +153,7 @@ func TestPlan_destroy(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 	})
 	outPath := testTempFile(t)
@@ -217,6 +218,39 @@ func TestPlan_noState(t *testing.T) {
 	expected := cty.NullVal(p.GetProviderSchemaResponse.ResourceTypes["test_instance"].Block.ImpliedType())
 	if !expected.RawEquals(actual) {
 		t.Fatalf("wrong prior state\ngot:  %#v\nwant: %#v", actual, expected)
+	}
+}
+
+func TestPlan_noTestVars(t *testing.T) {
+	td := t.TempDir()
+	testCopyDir(t, testFixturePath("plan-no-test-vars"), td)
+	defer testChdir(t, td)()
+
+	p := planFixtureProvider()
+	view, done := testView(t)
+	c := &PlanCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(p),
+			View:             view,
+		},
+	}
+
+	code := c.Run([]string{})
+	output := done(t)
+	if code != 0 {
+		t.Fatalf("bad: %d\n\n%s", code, output.Stderr())
+	}
+
+	// Verify values defined in the 'tests' folder are not used during a plan action
+	expectedResult := `ami = "ValueFROMmain/tfvars"`
+	result := output.All()
+	if !strings.Contains(result, expectedResult) {
+		t.Fatalf("Expected output to contain '%s', got: %s", expectedResult, result)
+	}
+
+	expectedToNotExist := "ValueFROMtests/tfvars"
+	if strings.Contains(result, expectedToNotExist) {
+		t.Fatalf("Expected output to not contain '%s', got: %s", expectedToNotExist, result)
 	}
 }
 
@@ -316,6 +350,7 @@ func TestPlan_outPathNoChange(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 	})
 	statePath := testStateFile(t, originalState)
@@ -417,6 +452,7 @@ func TestPlan_outBackend(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 	})
 
@@ -1401,6 +1437,92 @@ func TestPlan_targetFlagsDiags(t *testing.T) {
 	}
 }
 
+// Config with multiple resources, targeted plan with exclude
+func TestPlan_excluded(t *testing.T) {
+	td := t.TempDir()
+	testCopyDir(t, testFixturePath("apply-excluded"), td)
+	defer testChdir(t, td)()
+
+	p := testProvider()
+	p.GetProviderSchemaResponse = &providers.GetProviderSchemaResponse{
+		ResourceTypes: map[string]providers.Schema{
+			"test_instance": {
+				Block: &configschema.Block{
+					Attributes: map[string]*configschema.Attribute{
+						"id": {Type: cty.String, Computed: true},
+					},
+				},
+			},
+		},
+	}
+	p.PlanResourceChangeFn = func(req providers.PlanResourceChangeRequest) providers.PlanResourceChangeResponse {
+		return providers.PlanResourceChangeResponse{
+			PlannedState: req.ProposedNewState,
+		}
+	}
+
+	view, done := testView(t)
+	c := &PlanCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(p),
+			View:             view,
+		},
+	}
+
+	args := []string{
+		"-exclude", "test_instance.bar",
+	}
+	code := c.Run(args)
+	output := done(t)
+	if code != 0 {
+		t.Fatalf("bad: %d\n\n%s", code, output.Stderr())
+	}
+
+	if got, want := output.Stdout(), "3 to add, 0 to change, 0 to destroy"; !strings.Contains(got, want) {
+		t.Fatalf("bad change summary, want %q, got:\n%s", want, got)
+	}
+}
+
+// Diagnostics for invalid -exclude flags
+func TestPlan_excludeFlagsDiags(t *testing.T) {
+	testCases := map[string]string{
+		"test_instance.": "Dot must be followed by attribute name.",
+		"test_instance":  "Resource specification must include a resource type and name.",
+	}
+
+	for exclude, wantDiag := range testCases {
+		t.Run(exclude, func(t *testing.T) {
+			td := testTempDir(t)
+			defer os.RemoveAll(td)
+			defer testChdir(t, td)()
+
+			view, done := testView(t)
+			c := &PlanCommand{
+				Meta: Meta{
+					View: view,
+				},
+			}
+
+			args := []string{
+				"-exclude", exclude,
+			}
+			code := c.Run(args)
+			output := done(t)
+			if code != 1 {
+				t.Fatalf("bad: %d\n\n%s", code, output.Stdout())
+			}
+
+			got := output.Stderr()
+			if !strings.Contains(got, exclude) {
+				t.Fatalf("bad error output, want %q, got:\n%s", exclude, got)
+			}
+			if !strings.Contains(got, wantDiag) {
+				t.Fatalf("bad error output, want %q, got:\n%s", wantDiag, got)
+			}
+		})
+	}
+}
+
 func TestPlan_replace(t *testing.T) {
 	td := t.TempDir()
 	testCopyDir(t, testFixturePath("plan-replace"), td)
@@ -1421,6 +1543,7 @@ func TestPlan_replace(t *testing.T) {
 				Provider: addrs.NewDefaultProvider("test"),
 				Module:   addrs.RootModule,
 			},
+			addrs.NoKey,
 		)
 	})
 	statePath := testStateFile(t, originalState)
