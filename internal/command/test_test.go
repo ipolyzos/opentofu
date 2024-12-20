@@ -17,6 +17,7 @@ import (
 	"github.com/opentofu/opentofu/internal/addrs"
 	testing_command "github.com/opentofu/opentofu/internal/command/testing"
 	"github.com/opentofu/opentofu/internal/command/views"
+	"github.com/opentofu/opentofu/internal/configs/configschema"
 	"github.com/opentofu/opentofu/internal/providers"
 	"github.com/opentofu/opentofu/internal/terminal"
 )
@@ -819,6 +820,10 @@ func TestTest_Modules(t *testing.T) {
 			expected: "main.tftest.hcl... pass\n  run \"setup\"... pass\n  run \"test\"... pass\n\nSuccess! 2 passed, 0 failed.\n",
 			code:     0,
 		},
+		"destroyed_mod_outputs": {
+			expected: "main.tftest.hcl... pass\n  run \"first_apply\"... pass\n  run \"second_apply\"... pass\n\nSuccess! 2 passed, 0 failed.\n",
+			code:     0,
+		},
 	}
 
 	for name, tc := range tcs {
@@ -1024,25 +1029,26 @@ func TestTest_PartialUpdates(t *testing.T) {
 
 Warning: Resource targeting is in effect
 
-You are creating a plan with the -target option, which means that the result
-of this plan may not represent all of the changes requested by the current
-configuration.
+You are creating a plan with either the -target option or the -exclude
+option, which means that the result of this plan may not represent all of the
+changes requested by the current configuration.
 
-The -target option is not for routine use, and is provided only for
-exceptional situations such as recovering from errors or mistakes, or when
-OpenTofu specifically suggests to use it as part of an error message.
+The -target and -exclude options are not for routine use, and are provided
+only for exceptional situations such as recovering from errors or mistakes,
+or when OpenTofu specifically suggests to use it as part of an error message.
 
 Warning: Applied changes may be incomplete
 
-The plan was created with the -target option in effect, so some changes
-requested in the configuration may have been ignored and the output values
-may not be fully updated. Run the following command to verify that no other
-changes are pending:
+The plan was created with the -target or the -exclude option in effect, so
+some changes requested in the configuration may have been ignored and the
+output values may not be fully updated. Run the following command to verify
+that no other changes are pending:
     tofu plan
 	
-Note that the -target option is not suitable for routine use, and is provided
-only for exceptional situations such as recovering from errors or mistakes,
-or when OpenTofu specifically suggests to use it as part of an error message.
+Note that the -target and -exclude options are not suitable for routine use,
+and are provided only for exceptional situations such as recovering from
+errors or mistakes, or when OpenTofu specifically suggests to use it as part
+of an error message.
   run "second"... pass
 
 Success! 2 passed, 0 failed.
@@ -1055,25 +1061,26 @@ Success! 2 passed, 0 failed.
 
 Warning: Resource targeting is in effect
 
-You are creating a plan with the -target option, which means that the result
-of this plan may not represent all of the changes requested by the current
-configuration.
+You are creating a plan with either the -target option or the -exclude
+option, which means that the result of this plan may not represent all of the
+changes requested by the current configuration.
 
-The -target option is not for routine use, and is provided only for
-exceptional situations such as recovering from errors or mistakes, or when
-OpenTofu specifically suggests to use it as part of an error message.
+The -target and -exclude options are not for routine use, and are provided
+only for exceptional situations such as recovering from errors or mistakes,
+or when OpenTofu specifically suggests to use it as part of an error message.
 
 Warning: Applied changes may be incomplete
 
-The plan was created with the -target option in effect, so some changes
-requested in the configuration may have been ignored and the output values
-may not be fully updated. Run the following command to verify that no other
-changes are pending:
+The plan was created with the -target or the -exclude option in effect, so
+some changes requested in the configuration may have been ignored and the
+output values may not be fully updated. Run the following command to verify
+that no other changes are pending:
     tofu plan
 	
-Note that the -target option is not suitable for routine use, and is provided
-only for exceptional situations such as recovering from errors or mistakes,
-or when OpenTofu specifically suggests to use it as part of an error message.
+Note that the -target and -exclude options are not suitable for routine use,
+and are provided only for exceptional situations such as recovering from
+errors or mistakes, or when OpenTofu specifically suggests to use it as part
+of an error message.
 
 Failure! 0 passed, 1 failed.
 `,
@@ -1392,5 +1399,68 @@ digits, underscores, and dashes.
 				t.Fatalf("expected status code 0 but got %d: %s", code, ui.ErrorWriter)
 			}
 		})
+	}
+}
+
+// TestTest_MockProviderValidation checks if tofu test runs proper validation for
+// mock_provider. Even if provider schema has required fields, tofu test should
+// ignore it completely, because the provider is mocked.
+func TestTest_MockProviderValidation(t *testing.T) {
+	td := t.TempDir()
+	testCopyDir(t, testFixturePath("test/mock_provider_validation"), td)
+	defer testChdir(t, td)()
+
+	provider := testing_command.NewProvider(nil)
+	providerSource, closePS := newMockProviderSource(t, map[string][]string{
+		"test": {"1.0.0"},
+	})
+	defer closePS()
+
+	provider.Provider.GetProviderSchemaResponse = &providers.GetProviderSchemaResponse{
+		Provider: providers.Schema{
+			Block: &configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"required_field": {
+						Type:     cty.String,
+						Required: true,
+					},
+				},
+			},
+		},
+		ResourceTypes: map[string]providers.Schema{
+			"test_resource": {
+				Block: &configschema.Block{
+					Attributes: map[string]*configschema.Attribute{
+						"value": {
+							Type:     cty.String,
+							Optional: true,
+						},
+						"computed_value": {
+							Type:     cty.String,
+							Computed: true,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	streams, _ := terminal.StreamsForTesting(t)
+	view := views.NewView(streams)
+	ui := new(cli.MockUi)
+	meta := Meta{
+		testingOverrides: metaOverridesForProvider(provider.Provider),
+		Ui:               ui,
+		View:             view,
+		Streams:          streams,
+		ProviderSource:   providerSource,
+	}
+
+	testCmd := &TestCommand{
+		Meta: meta,
+	}
+
+	if code := testCmd.Run(nil); code != 0 {
+		t.Fatalf("expected status code 0 but got %d: %s", code, ui.ErrorWriter)
 	}
 }

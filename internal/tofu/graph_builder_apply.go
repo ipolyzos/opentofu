@@ -46,6 +46,12 @@ type ApplyGraphBuilder struct {
 	// outputs should go into the diff so that this is unnecessary.
 	Targets []addrs.Targetable
 
+	// Excludes are resources to exclude. This is only required to make sure
+	// unnecessary outputs aren't included in the apply graph. The plan
+	// builder successfully handles targeting resources. In the future,
+	// outputs should go into the diff so that this is unnecessary.
+	Excludes []addrs.Targetable
+
 	// ForceReplace are the resource instance addresses that the user
 	// requested to force replacement for when creating the plan, if any.
 	// The apply step refers to these as part of verifying that the planned
@@ -181,10 +187,7 @@ func (b *ApplyGraphBuilder) Steps() []GraphTransformer {
 			Changes:   b.Changes,
 			Operation: b.Operation,
 		},
-		&CBDEdgeTransformer{
-			Config: b.Config,
-			State:  b.State,
-		},
+		&CBDEdgeTransformer{},
 
 		// We need to remove configuration nodes that are not used at all, as
 		// they may not be able to evaluate, especially during destroy.
@@ -192,7 +195,7 @@ func (b *ApplyGraphBuilder) Steps() []GraphTransformer {
 		&pruneUnusedNodesTransformer{},
 
 		// Target
-		&TargetsTransformer{Targets: b.Targets},
+		&TargetingTransformer{Targets: b.Targets, Excludes: b.Excludes},
 
 		// Close opened plugin connections
 		&CloseProviderTransformer{},
